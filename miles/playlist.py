@@ -10,11 +10,10 @@ import os
 import time
 from tqdm import tqdm_notebook
 import datetime 
+import sys
 
 from plotly.offline import iplot,init_notebook_mode
 import plotly.graph_objs as go
-
-
 
 # Custom libraries
 import librosa
@@ -25,6 +24,9 @@ from librosa import power_to_db
 import warnings
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
+
+# Custom library
+from .music import Music
 
 
 KEYS = ["C","C#","D","D#","E","F","F#","G","Ab","A","Bb","B"]
@@ -47,7 +49,7 @@ class Playlist:
 
         # Prepare paths list
         if folder is not None:
-            self.paths = os.listdir(folder)
+            self.paths = [os.path.join(folder,x) for x in os.listdir(folder)]
         else:
             self.paths = paths
         self.paths = [path for path in self.paths if path.endswith(".mp3")]
@@ -87,9 +89,25 @@ class Playlist:
 
 
     def show_keys(self):
-        pass
 
+        data = [
+            go.Scatterpolar(
+              r = music.keys_summary["intensity"],
+              theta = music.keys_summary["key"],
+              fill = 'toself',
+              name = music.path
+            ) for music in self
+        ]
 
+        layout = go.Layout(
+          polar = dict(
+            radialaxis = dict(
+              visible = True,
+              range = [0, 1]
+            )
+          ),
+          showlegend = False
+        )
 
-
-
+        fig = {"data":data,"layout":layout}
+        iplot(fig)

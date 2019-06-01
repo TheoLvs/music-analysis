@@ -14,6 +14,7 @@ import datetime
 from plotly.offline import iplot,init_notebook_mode
 import plotly.graph_objs as go
 
+import IPython.display as ipd
 
 
 # Custom libraries
@@ -29,6 +30,7 @@ warnings.simplefilter(action='ignore', category=FutureWarning)
 Inspiration : 
 - https://github.com/vivjay30/pychorus
 - https://github.com/librosa/librosa
+- https://musicinformationretrieval.com/index.html
 """
 
 KEYS = ["C","C#","D","D#","E","F","F#","G","Ab","A","Bb","B"]
@@ -36,17 +38,17 @@ KEYS = ["C","C#","D","D#","E","F","F#","G","Ab","A","Bb","B"]
 
 
 class Music:
-    def __init__(self,path,load_fast = True,**kwargs):
+    def __init__(self,path,load_fast = True,duration = None,**kwargs):
         
         self.path = path
-        self.load(path,load_fast = load_fast,**kwargs)
+        self.load(path,load_fast = load_fast,duration = duration,**kwargs)
 
         # Compute all features
         self.compute_spectrogram()
         self.compute_tempo()
         self.compute_duration()
         self.compute_chromagram()
-        # self.compute_key()
+        self.compute_key()
 
     def __repr__(self):
         """String representation
@@ -54,13 +56,13 @@ class Music:
         return f"Music(path='{self.path}')"
 
 
-    def load(self,path,load_fast = True,**kwargs):
+    def load(self,path,load_fast = True,duration = None,**kwargs):
         """Load music object using librosa library
         Reference at https://librosa.github.io/librosa/generated/librosa.core.load.html#librosa.core.load
         """
 
         res_type = "kaiser_fast" if load_fast else "kaiser_best"
-        self.waveform,self.sampling_rate = librosa.load(path,res_type = res_type,**kwargs)
+        self.waveform,self.sampling_rate = librosa.load(path,res_type = res_type,duration = duration,**kwargs)
         print(f"... Loaded '{path}' file")
 
 
@@ -122,7 +124,9 @@ class Music:
         # Compute main key with greedy algorithm
         self.main_key = KEYS[self._get_main_key_index(self.keys_summary)]
         self.is_major = self._is_major(self.keys_summary)
-        self.key = main_key + ("" if self.is_major else "m")
+        self.key = self.main_key + ("" if self.is_major else "m")
+
+        print(f"... Detected key: {self.key}")
 
 
     def _is_major(self,summary):
@@ -132,15 +136,22 @@ class Music:
                 .idxmax()
                ) == 1
 
-    def _get_thirds(summary,key_index = None):
-        if key_index is None:
-            key_index = self._get_main_key_index(summary)
+    def _get_thirds(self,summary):
+        key_index = self._get_main_key_index(summary)
         return (KEYS*2)[key_index+3:key_index+5]
 
     @staticmethod
     def _get_main_key_index(summary):
         return summary["intensity"].idxmax()
 
+
+    def play(self,with_clicks = False):
+        if not with_clicks:
+            return ipd.Audio(self.path,rate = self.sampling_rate)
+        else:
+            clicks = librosa.clicks(self.beat_times, sr=self.sampling_rate, length=len(self.waveform))
+            audio = self.waveform + clicks
+            return ipd.Audio(audio,rate = self.sampling_rate)
 
 
     def show_spectrogram(self,**kwargs):
@@ -151,6 +162,13 @@ class Music:
         plt.figure(figsize = (15,4))
         specshow(self.spectrogram_db,x_axis = "time",**kwargs)
         plt.colorbar()
+        plt.tight_layout()
+        plt.show()
+
+
+    def show_waveform(self):
+        plt.figure(figsize=(15, 4))
+        librosa.display.waveplot(self.waveform, sr=self.sampling_rate)
         plt.tight_layout()
         plt.show()
 
