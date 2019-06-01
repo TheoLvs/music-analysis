@@ -3,11 +3,18 @@
 
 
 # Usual libraries
+import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import os
 import time
 from tqdm import tqdm_notebook
+import datetime 
+
+from plotly.offline import iplot,init_notebook_mode
+import plotly.graph_objs as go
+
+
 
 # Custom libraries
 import librosa
@@ -24,6 +31,8 @@ Inspiration :
 - https://github.com/librosa/librosa
 """
 
+KEYS = ["C","C#","D","D#","E","F","F#","G","Ab","A","Bb","B"]
+
 
 
 class Music:
@@ -31,8 +40,13 @@ class Music:
         
         self.path = path
         self.load(path,load_fast = load_fast,**kwargs)
+
+        # Compute all features
         self.compute_spectrogram()
         self.compute_tempo()
+        self.compute_duration()
+        self.compute_chromagram()
+        # self.compute_key()
 
     def __repr__(self):
         """String representation
@@ -55,7 +69,21 @@ class Music:
         if not hasattr(self,"spectrogram"):
             self.spectrogram = melspectrogram(self.waveform,self.sampling_rate)
             self.spectrogram_db = power_to_db(self.spectrogram,ref = np.max)  
-            print("... Computed spectrogram")      
+            print("... Computed spectrogram")  
+
+
+    def compute_chromagram(self,energy = False):
+        """Compute the chromagram
+        """    
+
+        if not hasattr(self,"chromagram"):
+            if energy:
+                S = np.abs(librosa.stft(self.waveform))
+                self.chromagram = librosa.feature.chroma_stft(S=S, sr=self.sampling_rate)
+            else:
+                self.chromagram = librosa.feature.chroma_stft(y=self.waveform, sr=self.sampling_rate)
+
+            print("... Computed chromagram")  
 
 
     def compute_tempo(self):
@@ -70,13 +98,55 @@ class Music:
         self.beat_times = librosa.frames_to_time(self.beat_frames, sr=self.sampling_rate)
 
 
-    def show_spectrogram(self,**kwargs):
-        """Compute spectrogram of the music and display it
-        TODO add plotly or bokeh to dynamically explore the sound
+    def compute_duration(self):
+        """Compute duration of the music in seconds
+        """
+    
+        # Get music duration
+        self.duration = librosa.core.get_duration(y=self.waveform, sr=self.sampling_rate)
+        print(f"... Music duration is {self.get_duration(as_str = True)}")
+
+
+    def compute_key(self):
+        """Compute key detection
+        TODO add https://gist.github.com/bmcfee/1f66825cef2eb34c839b42dddbad49fd
         """
 
-        self.compute_spectrogram()
+        # Compute chromagram if not already done
+        self.compute_chromagram()
 
+        # Compute keys summary
+        self.keys_summary = pd.DataFrame({"key":KEYS,"intensity":self.chromagram.sum(axis = 1)})
+        self.keys_summary["intensity"] = self.keys_summary["intensity"] / self.keys_summary["intensity"].max()
+
+        # Compute main key with greedy algorithm
+        self.main_key = KEYS[self._get_main_key_index(self.keys_summary)]
+        self.is_major = self._is_major(self.keys_summary)
+        self.key = main_key + ("" if self.is_major else "m")
+
+
+    def _is_major(self,summary):
+        return (summary.loc[summary["key"].isin(self._get_thirds(summary))]
+                ["intensity"]
+                .reset_index(drop = True)
+                .idxmax()
+               ) == 1
+
+    def _get_thirds(summary,key_index = None):
+        if key_index is None:
+            key_index = self._get_main_key_index(summary)
+        return (KEYS*2)[key_index+3:key_index+5]
+
+    @staticmethod
+    def _get_main_key_index(summary):
+        return summary["intensity"].idxmax()
+
+
+
+    def show_spectrogram(self,**kwargs):
+        """Display the spectrogram
+        TODO add plotly or bokeh to dynamically explore the sound
+        """
         # Show spectrogram
         plt.figure(figsize = (15,4))
         specshow(self.spectrogram_db,x_axis = "time",**kwargs)
@@ -85,9 +155,56 @@ class Music:
         plt.show()
 
 
+    def show_chromagram(self,**kwargs):
+        """Display the chromagram
+        TODO add plotly or bokeh to dynamically explore the sound
+        """
+        
+        # Show chromagram        
+        plt.figure(figsize=(15, 4))
+        librosa.display.specshow(self.chromagram, y_axis='chroma', x_axis='time')
+        plt.colorbar()
+        plt.title('Chromagram')
+        plt.tight_layout()
+
+
+    def show_keys(self):
+
+        data = [go.Scatterpolar(
+          r = self.keys_summary["intensity"],
+          theta = self.keys_summary["key"],
+          fill = 'toself'
+        )]
+
+        layout = go.Layout(
+          title = f"Key: {self.key}",
+          polar = dict(
+            radialaxis = dict(
+              visible = True,
+              range = [0, self.keys_summary["intensity"].max()]
+            )
+          ),
+          showlegend = False
+        )
+
+        fig = {"data":data,"layout":layout}
+        iplot(fig)
+
+
 
     def get_tonality(self):
         pass
+
+
+    def get_duration(self,as_str = True):
+        if not hasattr(self,"duration"):
+            self.compute_duration()
+
+        if as_str:
+            return str(datetime.timedelta(seconds=int(self.duration)))
+        else:
+            return self.duration
+
 
 
     def describe(self):
@@ -97,10 +214,8 @@ class Music:
         - Length
         - Atmosphere
         """
-    
-        # Get music duration
-        self.duration = librosa.core.get_duration(y=self.waveform, sr=self.sampling_rate)
 
+        pass
 
 
 
