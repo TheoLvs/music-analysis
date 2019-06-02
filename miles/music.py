@@ -215,6 +215,9 @@ class Music:
 
 
     def get_duration(self,as_str = True):
+        """Get duration of the music in seconds
+        Will compute the duration if not computed before
+        """
         if not hasattr(self,"duration"):
             self.compute_duration()
 
